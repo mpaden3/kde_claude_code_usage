@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kcfg xmlns="http://www.kde.org/standards/kcfg/1.0"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0
+                          http://www.kde.org/standards/kcfg/1.0/kcfg.xsd">
+    <kcfgfile name=""/>
+    <group name="General">
+
+        <!-- Plan / usage window -->
+        <entry name="plan" type="String">
+            <label>Subscription plan; drives the default token budgets.</label>
+            <default>pro</default>
+        </entry>
+        <entry name="usageWindow" type="String">
+            <label>Which window to show: "session" (5-hour block) or "weekly" (rolling 7 days).</label>
+            <default>session</default>
+        </entry>
+        <entry name="tokenLimit" type="Int">
+            <label>Token budget that represents a full bar for one 5-hour session.</label>
+            <default>860000</default>
+        </entry>
+        <entry name="weeklyTokenLimit" type="Int">
+            <label>Token budget that represents a full bar over a rolling 7-day window.</label>
+            <default>8000000</default>
+        </entry>
+        <entry name="metric" type="String">
+            <label>Which tokens to count: "billable" (input+output+cache writes) or "total".</label>
+            <default>billable</default>
+        </entry>
+
+        <!-- Appearance -->
+        <entry name="barWidth" type="Int">
+            <label>Bar width in pixels.</label>
+            <default>120</default>
+        </entry>
+        <entry name="cornerRadius" type="Int">
+            <label>Corner radius of the bar in pixels (0 = square).</label>
+            <default>4</default>
+        </entry>
+        <entry name="borderWidth" type="Int">
+            <label>Bar border width in pixels (0 = no border).</label>
+            <default>1</default>
+        </entry>
+        <entry name="borderColor" type="Color">
+            <label>Bar border colour.</label>
+            <default>#5C5C5C</default>
+        </entry>
+        <entry name="barColor" type="Color">
+            <label>Base fill colour.</label>
+            <default>#3584E4</default>
+        </entry>
+        <entry name="useThresholdColors" type="Bool">
+            <label>Recolour the bar as it fills past warning/critical levels.</label>
+            <default>true</default>
+        </entry>
+        <entry name="warnColor" type="Color">
+            <label>Warning fill colour.</label>
+            <default>#F67400</default>
+        </entry>
+        <entry name="critColor" type="Color">
+            <label>Critical fill colour.</label>
+            <default>#DA4453</default>
+        </entry>
+        <entry name="warnThreshold" type="Int">
+            <label>Percentage at which the warning colour kicks in.</label>
+            <default>70</default>
+        </entry>
+        <entry name="critThreshold" type="Int">
+            <label>Percentage at which the critical colour kicks in.</label>
+            <default>90</default>
+        </entry>
+
+        <!-- Label -->
+        <entry name="labelPosition" type="String">
+            <label>Where to show the text label: "off", "onbar", "left" or "right".</label>
+            <default>onbar</default>
+        </entry>
+        <entry name="labelText" type="String">
+            <label>Optional text shown before the percentage in the label.</label>
+            <default></default>
+        </entry>
+
+        <!-- Polling -->
+        <entry name="updateIntervalSec" type="Int">
+            <label>How often to refresh, in seconds.</label>
+            <default>30</default>
+        </entry>
+    </group>
+</kcfg>

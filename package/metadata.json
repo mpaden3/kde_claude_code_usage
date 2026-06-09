@@ -1,0 +1,19 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Email": "markopaden3@gmail.com",
+                "Name": "Marko"
+            }
+        ],
+        "Category": "System Information",
+        "Description": "Shows your Claude Code session or weekly usage as a configurable bar.",
+        "Icon": "speedometer",
+        "Id": "org.marko.claudeusage",
+        "License": "MIT",
+        "Name": "Claude Session Usage",
+        "Version": "0.2.0"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}
