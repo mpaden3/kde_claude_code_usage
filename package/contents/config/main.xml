@@ -6,26 +6,12 @@
     <kcfgfile name=""/>
     <group name="General">
 
-        <!-- Plan / usage window -->
-        <entry name="plan" type="String">
-            <label>Subscription plan; drives the default token budgets.</label>
-            <default>pro</default>
-        </entry>
+        <!-- Usage window. The bar shows Anthropic's real per-plan utilisation
+             for whichever window is selected, so there is no token budget to
+             configure any more. -->
         <entry name="usageWindow" type="String">
             <label>Which window to show: "session" (5-hour block) or "weekly" (rolling 7 days).</label>
             <default>session</default>
-        </entry>
-        <entry name="tokenLimit" type="Int">
-            <label>Token budget that represents a full bar for one 5-hour session.</label>
-            <default>860000</default>
-        </entry>
-        <entry name="weeklyTokenLimit" type="Int">
-            <label>Token budget that represents a full bar over a rolling 7-day window.</label>
-            <default>8000000</default>
-        </entry>
-        <entry name="metric" type="String">
-            <label>Which tokens to count: "billable" (input+output+cache writes) or "total".</label>
-            <default>billable</default>
         </entry>
 
         <!-- Appearance -->
@@ -82,8 +68,8 @@
 
         <!-- Polling -->
         <entry name="updateIntervalSec" type="Int">
-            <label>How often to refresh, in seconds.</label>
-            <default>30</default>
+            <label>How often to refresh, in seconds. The usage endpoint rate-limits, so keep this generous.</label>
+            <default>300</default>
         </entry>
     </group>
 </kcfg>

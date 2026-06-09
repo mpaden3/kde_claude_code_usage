@@ -10,11 +10,7 @@ Kirigami.FormLayout {
     // Config keys from main.xml are exposed by the harness as cfg_<name>.
     // NOTE: Color keys MUST be backed by string/var here — an int property
     // silently mangles the value, which is why the colour pickers used to "not work".
-    property string cfg_plan
     property string cfg_usageWindow
-    property alias  cfg_tokenLimit: tokenLimit.value
-    property alias  cfg_weeklyTokenLimit: weeklyLimit.value
-    property string cfg_metric
 
     property alias  cfg_barWidth: barWidth.value
     property alias  cfg_cornerRadius: cornerRadius.value
@@ -31,39 +27,9 @@ Kirigami.FormLayout {
     property alias  cfg_labelText: labelText.text
     property alias  cfg_updateIntervalSec: updateInterval.value
 
-    // Full-bar token budgets per plan. Claude doesn't expose the real ceiling
-    // locally, so these are calibrated against Claude's own usage %: Pro was
-    // tuned so the bar matches the official meter (session ~76%, weekly ~52%).
-    // Max tiers scale Pro by 5×/20×. "Custom" lets you override either field.
-    readonly property var planPresets: ({
-        "pro":   { session: 860000,    weekly: 8000000 },
-        "max5":  { session: 4300000,   weekly: 40000000 },
-        "max20": { session: 17200000,  weekly: 160000000 }
-    })
-
-    // ---- Plan & window -----------------------------------------------------
-
-    QQC2.ComboBox {
-        id: planBox
-        Kirigami.FormData.label: i18n("Plan:")
-        textRole: "text"
-        valueRole: "value"
-        model: [
-            { text: i18n("Pro"),         value: "pro" },
-            { text: i18n("Max (5×)"),    value: "max5" },
-            { text: i18n("Max (20×)"),   value: "max20" },
-            { text: i18n("Custom"),      value: "custom" }
-        ]
-        Component.onCompleted: currentIndex = indexOfValue(cfg_plan)
-        onActivated: {
-            cfg_plan = currentValue;
-            const p = page.planPresets[currentValue];
-            if (p) {
-                cfg_tokenLimit = p.session;
-                cfg_weeklyTokenLimit = p.weekly;
-            }
-        }
-    }
+    // ---- Window ------------------------------------------------------------
+    // The bar reflects Anthropic's real per-plan utilisation for the chosen
+    // window, so there is nothing to calibrate.
 
     QQC2.ComboBox {
         id: windowBox
@@ -76,43 +42,6 @@ Kirigami.FormLayout {
         ]
         Component.onCompleted: currentIndex = indexOfValue(cfg_usageWindow)
         onActivated: cfg_usageWindow = currentValue
-    }
-
-    QQC2.SpinBox {
-        id: tokenLimit
-        Kirigami.FormData.label: i18n("Session full bar at:")
-        enabled: cfg_plan === "custom"
-        from: 1000
-        to: 1000000000
-        stepSize: 50000
-        editable: true
-        textFromValue: (value) => value.toLocaleString(Qt.locale(), "f", 0) + " tokens"
-        valueFromText: (text) => parseInt(text.replace(/\D/g, "")) || from
-    }
-
-    QQC2.SpinBox {
-        id: weeklyLimit
-        Kirigami.FormData.label: i18n("Weekly full bar at:")
-        enabled: cfg_plan === "custom"
-        from: 1000
-        to: 2000000000
-        stepSize: 500000
-        editable: true
-        textFromValue: (value) => value.toLocaleString(Qt.locale(), "f", 0) + " tokens"
-        valueFromText: (text) => parseInt(text.replace(/\D/g, "")) || from
-    }
-
-    QQC2.ComboBox {
-        id: metricBox
-        Kirigami.FormData.label: i18n("Count:")
-        textRole: "text"
-        valueRole: "value"
-        model: [
-            { text: i18n("Billable tokens (input + output + cache writes)"), value: "billable" },
-            { text: i18n("All tokens (includes cache reads)"), value: "total" }
-        ]
-        Component.onCompleted: currentIndex = indexOfValue(cfg_metric)
-        onActivated: cfg_metric = currentValue
     }
 
     // ---- Appearance --------------------------------------------------------
@@ -241,10 +170,11 @@ Kirigami.FormLayout {
     QQC2.SpinBox {
         id: updateInterval
         Kirigami.FormData.label: i18n("Refresh every:")
-        from: 5
-        to: 600
-        stepSize: 5
-        textFromValue: (value) => value + " s"
-        valueFromText: (text) => parseInt(text)
+        // The usage endpoint rate-limits, so don't poll too hard (floor 1 min).
+        from: 60
+        to: 1800
+        stepSize: 60
+        textFromValue: (value) => (value / 60).toFixed(value % 60 ? 1 : 0) + " min"
+        valueFromText: (text) => Math.round((parseFloat(text.replace(/[^\d.]/g, "")) || 1) * 60)
     }
 }

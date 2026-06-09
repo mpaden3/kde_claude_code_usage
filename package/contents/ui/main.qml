@@ -8,55 +8,61 @@ import org.kde.kirigami as Kirigami
 PlasmoidItem {
     id: root
 
-    // Absolute path to the bundled helper script (strip the file:// scheme).
-    readonly property string scriptPath:
-        Qt.resolvedUrl("../code/claude_usage.py").toString().replace(/^file:\/\//, "")
+    // Absolute path to the bundled collector binary (strip the file:// scheme).
+    // It calls Anthropic's usage endpoint via the Claude Code OAuth token and
+    // reports the *real* per-plan utilisation, so there is no guessed limit.
+    readonly property string collectorPath:
+        Qt.resolvedUrl("../code/claude-usage-collector").toString().replace(/^file:\/\//, "")
 
     property var usage: ({})
-    property int tokens: 0
-    property real fraction: 0       // 0..1, only meaningful while usage is active
+    property real utilization: 0    // raw percent from Anthropic (may exceed 100)
+    property real fraction: 0       // 0..1, the bar fill (clamped utilization)
     property bool active: false
     property int minutesRemaining: 0
+    property int minutesElapsed: 0
 
     readonly property string usageWindow: plasmoid.configuration.usageWindow
     readonly property bool weekly: usageWindow === "weekly"
-    readonly property int limit: Math.max(1,
-        weekly ? plasmoid.configuration.weeklyTokenLimit
-               : plasmoid.configuration.tokenLimit)
 
-    function chosenTokens(d) {
-        if (!d)
-            return 0;
-        if (plasmoid.configuration.metric === "total")
-            return (d.total_tokens || 0);
-        return (d.input_tokens || 0) + (d.output_tokens || 0) + (d.cache_creation_tokens || 0);
-    }
+    property double lastRefreshMs: 0
 
     function refresh() {
-        executable.exec("python3 '" + scriptPath + "' " + usageWindow);
+        // Debounce: the endpoint rate-limits, so ignore bursts (e.g. double
+        // clicks) within a few seconds of the previous run.
+        const now = Date.now();
+        if (now - lastRefreshMs < 3000)
+            return;
+        lastRefreshMs = now;
+        executable.exec("'" + collectorPath + "' " + usageWindow);
     }
 
     function handleData(stdout) {
+        let d;
         try {
-            const d = JSON.parse(stdout);
-            root.usage = d;
-            root.active = !!d.active;
-            root.minutesRemaining = d.minutes_remaining || 0;
-            root.tokens = chosenTokens(d);
-            root.fraction = root.active ? Math.max(0, Math.min(1, root.tokens / root.limit)) : 0;
+            d = JSON.parse(stdout);
         } catch (e) {
+            // Empty/garbled output: keep the last good reading rather than blank.
             root.usage = { error: "parse error: " + e };
-            root.active = false;
-            root.fraction = 0;
+            return;
         }
+        root.usage = d;
+        // Transient failure with nothing cached to fall back on: keep the last
+        // reading on screen instead of blanking the bar.
+        if (d.error && !d.active)
+            return;
+        root.active = !!d.active;
+        root.utilization = d.utilization || 0;
+        root.minutesRemaining = d.minutes_remaining || 0;
+        root.minutesElapsed = d.minutes_elapsed || 0;
+        root.fraction = root.active ? Math.max(0, Math.min(1, d.fraction || 0)) : 0;
     }
 
-    // Switching session <-> weekly (or its limit) re-reads immediately.
+    // Switching session <-> weekly re-reads immediately.
     onUsageWindowChanged: refresh()
 
     // The text shown in the label, e.g. "Claude 54%" or just "54%".
     readonly property string labelString: {
-        const pct = root.active ? Math.round(root.fraction * 100) + "%" : "–";
+        const pct = root.active ? Math.round(root.utilization) + "%" : "–";
         const t = plasmoid.configuration.labelText;
         return (t && t.length) ? (t + " " + pct) : pct;
     }
@@ -75,7 +81,7 @@ PlasmoidItem {
     }
 
     Timer {
-        interval: Math.max(5, plasmoid.configuration.updateIntervalSec) * 1000
+        interval: Math.max(60, plasmoid.configuration.updateIntervalSec) * 1000
         running: true
         repeat: true
         triggeredOnStart: true
@@ -93,7 +99,7 @@ PlasmoidItem {
         readonly property string labelPos: plasmoid.configuration.labelPosition
         readonly property color fillColor: {
             if (plasmoid.configuration.useThresholdColors) {
-                const pct = root.fraction * 100;
+                const pct = root.utilization;
                 if (pct >= plasmoid.configuration.critThreshold)
                     return plasmoid.configuration.critColor;
                 if (pct >= plasmoid.configuration.warnThreshold)
@@ -167,16 +173,19 @@ PlasmoidItem {
 
     toolTipMainText: i18n("Claude Usage")
     toolTipSubText: {
-        if (root.usage && root.usage.error)
-            return i18n("Error: %1", root.usage.error);
+        const u = root.usage || {};
         if (!root.active)
-            return root.weekly ? i18n("No usage recorded in the last 7 days.")
-                               : i18n("No active 5-hour session.");
-        const head = i18n("%1 tokens · %2%% of limit",
-                          root.tokens.toLocaleString(Qt.locale(), "f", 0),
-                          Math.round(root.fraction * 100));
-        return root.weekly
-            ? head + "\n" + i18n("Window started %1 min ago", root.usage.minutes_elapsed || 0)
-            : head + "\n" + i18n("%1 min left in this session", root.minutesRemaining);
+            return u.error ? i18n("Error: %1", u.error)
+                 : (root.weekly ? i18n("No 7-day usage reported.")
+                                : i18n("No active 5-hour session."));
+        const head = root.weekly
+            ? i18n("%1%% of your 7-day limit", Math.round(root.utilization))
+            : i18n("%1%% of your 5-hour limit", Math.round(root.utilization));
+        const h = Math.floor(root.minutesRemaining / 60);
+        const m = root.minutesRemaining % 60;
+        const reset = h > 0 ? i18n("Resets in %1 h %2 min", h, m)
+                            : i18n("Resets in %1 min", m);
+        const stale = u.stale ? "\n" + i18n("Last known value — refresh failed (rate limited).") : "";
+        return head + "\n" + reset + stale;
     }
 }

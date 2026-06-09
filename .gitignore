@@ -1,10 +1,9 @@
-# Python-generated files
-__pycache__/
-*.py[oc]
-build/
-dist/
-wheels/
-*.egg-info
+# Rust build artifacts
+/collector/target/
 
-# Virtual environments
-.venv
+# The collector binary is built and bundled into the package at install time;
+# never commit the compiled binary.
+/package/contents/code/claude-usage-collector
+
+# Editor / OS cruft
+.idea/

@@ -1,34 +1,41 @@
 # Claude Session Usage — KDE Plasma 6 widget
 
 A horizontal-panel plasmoid that shows how much of your current **Claude Code
-5-hour session window** you've used, as a single configurable bar.
+usage window** you've used, as a single configurable bar.
 
+- Shows the **real** per-plan utilisation for either the 5-hour session window
+  or the rolling 7-day window — no guessing, no calibration.
 - Width and colour are adjustable.
 - Optional warning/critical recolouring as the bar fills.
-- Reads usage locally from `~/.claude/projects/**/*.jsonl` via a small bundled
-  Python script — **no network, no external dependencies, no root.**
+- Reads usage via a small bundled **Rust binary** that wraps the
+  [`claude-usage`](https://docs.rs/claude-usage) crate. It authenticates with
+  your existing Claude Code OAuth token and asks Anthropic for the same numbers
+  Claude Code's own `/usage` shows.
 - Targets **Plasma 6 only** (versionless QML imports, `X-Plasma-API-Minimum-Version 6.0`).
 
-> Verified target here: Plasma **6.6.5**, Python **3.14**.
+> Verified target here: Plasma **6.6.5**, Rust **1.96**.
 
 ---
 
 ## What the bar means
 
-Claude usage resets on a rolling **5-hour window** ("session"). The bundled
-script groups your recent assistant-message token usage into 5-hour blocks the
-same way [`ccusage`](https://github.com/ryoppippi/ccusage) does, finds the block
-that covers *now*, and reports its token totals. The widget draws
-`tokens / limit` as a fraction.
+Claude usage resets on a rolling **5-hour window** ("session") and a separate
+**7-day window**. The bundled collector calls Anthropic's usage endpoint and
+reports the actual utilisation percentage for whichever window you pick, plus
+when it resets. The widget draws that percentage directly — `utilization / 100`
+as a fraction — so the "full bar" is your real per-plan ceiling, not a number you
+have to tune.
 
-Because Claude doesn't expose your real per-plan ceiling locally, **the "full
-bar" token budget is a number you set** (Configure → *Full bar at*). See
-[Calibrating the limit](#calibrating-the-limit).
+Pick which window to show in *Configure → Show*. There is nothing else to
+calibrate.
 
-**Billable vs all tokens:** by default the bar counts *billable* tokens
-(`input + output + cache-creation`) and ignores `cache_read`, which otherwise
-dominates and is mostly free. Switch to *All tokens* in config if you prefer the
-raw `ccusage`-style total.
+### Credentials & network
+
+The collector reads your Claude Code OAuth token from
+`~/.claude/.credentials.json` (or the `CLAUDE_CODE_OAUTH_TOKEN` environment
+variable) and makes one HTTPS request per refresh. It never writes to
+`~/.claude` and needs no Admin/API key — just the token Claude Code already
+created when you logged in.
 
 ---
 
@@ -36,14 +43,17 @@ raw `ccusage`-style total.
 
 ```
 plasma-claude-usage/
-├── install.sh                 # kpackagetool6 install/upgrade
+├── install.sh                 # cargo build + kpackagetool6 install/upgrade
 ├── uninstall.sh               # kpackagetool6 remove (clean)
 ├── README.md
+├── collector/                 # Rust collector (built at install time)
+│   ├── Cargo.toml
+│   └── src/main.rs            # get_usage() → one JSON line on stdout
 └── package/
     ├── metadata.json          # plasmoid manifest (id: org.marko.claudeusage)
     └── contents/
         ├── code/
-        │   └── claude_usage.py   # reads ~/.claude logs → one JSON line
+        │   └── claude-usage-collector   # the built binary (bundled by install.sh)
         ├── config/
         │   ├── config.qml        # registers the "General" config page
         │   └── main.xml          # config keys + defaults (cfg_* properties)
@@ -56,39 +66,44 @@ plasma-claude-usage/
 
 ```
 Timer (every N s) ─▶ Plasma5Support "executable" engine
-                     runs:  python3 .../code/claude_usage.py
+                     runs:  .../code/claude-usage-collector [session|weekly]
                             │
                             ▼
-                     {"active":true,"total_tokens":…,"input_tokens":…,
-                      "minutes_remaining":…, …}   (one JSON line on stdout)
+                     claude-usage crate ─▶ Anthropic usage endpoint
                             │
-                     main.qml parses it ─▶ fraction = tokens / limit ─▶ bar width/colour
+                            ▼
+                     {"active":true,"utilization":42.0,"fraction":0.42,
+                      "minutes_remaining":…, "resets_at":…}   (one JSON line)
+                            │
+                     main.qml parses it ─▶ bar width = fraction ─▶ width/colour
 ```
 
 ---
 
-## Implementation plan / status
+## Status
 
-**v0.1 (this scaffold — complete and runnable):**
+**Complete and runnable:**
 - [x] Plasmoid package skeleton (metadata, config, ui).
-- [x] Bundled dependency-free Python collector with 5-hour block logic,
-      file-mtime prefiltering, and message de-duplication.
+- [x] Bundled Rust collector using the `claude-usage` crate — real 5-hour and
+      7-day utilisation, with reset timing.
 - [x] Bar rendering pinned to a configurable width, fills the panel height.
 - [x] Configurable base colour + optional warn/critical thresholds.
-- [x] Configurable token budget, metric (billable/all), label, refresh interval.
-- [x] Tooltip with raw token count and minutes left in the window.
+- [x] Configurable window (session/weekly), label, refresh interval.
+- [x] Tooltip with utilisation % and time until the window resets.
 - [x] Click the bar to force an immediate refresh.
-- [x] One-command install/uninstall.
+- [x] One-command build + install/uninstall.
 
-**Possible v0.2+ (not built yet):**
-- [ ] Cost (€/$) readout — needs a per-model price table; pricing drifts, so left out of v1.
-- [ ] Weekly-limit secondary bar.
-- [ ] Auto-calibrate the limit from observed session peaks.
+**Possible later (not built yet):**
+- [ ] Cost (€/$) readout — the usage endpoint reports utilisation, not spend.
+- [ ] Show both windows at once (two bars).
 - [ ] Vertical-panel layout (today it's tuned for horizontal panels).
 
 ---
 
 ## Build / install
+
+Needs the **Rust toolchain** (https://rustup.rs); `install.sh` runs
+`cargo build --release` and bundles the binary into the package.
 
 ```bash
 cd ~/Projects/plasma-claude-usage
@@ -97,13 +112,15 @@ cd ~/Projects/plasma-claude-usage
 
 Then right-click the panel → **Add Widgets** → search **“Claude Session Usage”**
 → drag it onto a horizontal panel. Right-click the widget → **Configure** to set
-width, colour, and the token budget.
+width, colour, and which window to show.
 
-If it doesn't appear right away, reload the shell once:
-
-```bash
-kquitapp6 plasmashell && (kstart plasmashell >/dev/null 2>&1 &)
-```
+> **After upgrading, restart the shell.** plasmashell caches plasmoid QML for the
+> whole session, so re-installing (or even removing and re-adding the widget) is
+> *not* enough to load new code — you must restart the shell once:
+>
+> ```bash
+> kquitapp6 plasmashell && (kstart plasmashell >/dev/null 2>&1 &)
+> ```
 
 ---
 
@@ -111,27 +128,18 @@ kquitapp6 plasmashell && (kstart plasmashell >/dev/null 2>&1 &)
 
 ### 1. Test the collector alone (no Plasma needed)
 
-Run it against your real data:
-
 ```bash
-python3 package/contents/code/claude_usage.py
+cargo run --manifest-path collector/Cargo.toml -- session   # or: weekly
 ```
 
-Or against **fake** data so you can see all the states without touching
-`~/.claude` (the script honours `CLAUDE_CONFIG_DIR`):
+You should get a single JSON line with `"active": true` and the live
+`utilization` percentage. To test against a specific token without touching
+`~/.claude`:
 
 ```bash
-TMP=$(mktemp -d)
-mkdir -p "$TMP/projects/demo"
-NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-printf '%s\n' \
-  "{\"timestamp\":\"$NOW\",\"requestId\":\"r1\",\"message\":{\"id\":\"m1\",\"usage\":{\"input_tokens\":1000,\"output_tokens\":2000,\"cache_creation_input_tokens\":500,\"cache_read_input_tokens\":40000}}}" \
-  > "$TMP/projects/demo/session.jsonl"
-CLAUDE_CONFIG_DIR="$TMP" python3 package/contents/code/claude_usage.py
-rm -rf "$TMP"
+CLAUDE_CODE_OAUTH_TOKEN="sk-ant-oat0..." \
+  cargo run --manifest-path collector/Cargo.toml -- session
 ```
-
-You should get a single JSON line with `"active": true` and the summed tokens.
 
 ### 2. Test the widget in isolation
 
@@ -143,12 +151,9 @@ plasmawindowed org.marko.claudeusage
 
 > `plasmawindowed` ships with Plasma. For hot-reloading during UI work, install
 > the Plasma SDK (`plasma-sdk`) and use `plasmoidviewer -a ./package` instead —
-> it re-renders on file save.
+> it re-renders on file save and is not subject to plasmashell's QML cache.
 
 ### 3. Iterate on the live panel widget
-
-`kpackagetool6 --upgrade` updates the installed files; the quickest way to see
-QML changes is to re-run install then reload the shell:
 
 ```bash
 ./install.sh && kquitapp6 plasmashell && (kstart plasmashell >/dev/null 2>&1 &)
@@ -159,13 +164,6 @@ Watch for QML/script errors while developing:
 ```bash
 journalctl --user -f -t plasmashell
 ```
-
-### Calibrating the limit
-
-The default *Full bar at* is **2,000,000 billable tokens**, which is just a
-starting guess. To tune it: open a heavy work session, hover the widget to read
-the live **raw token count** in the tooltip near the point where you actually
-hit your Claude limit, then set *Full bar at* to that number.
 
 ---
 
@@ -179,5 +177,5 @@ cd .. && rm -rf plasma-claude-usage   # delete the source too
 
 That's everything. The widget writes no other files: its settings live in
 `~/.config/plasma-org.kde.plasma.desktop-appletsrc` and disappear when you
-remove the widget from the panel. It never modifies anything under `~/.claude`
-(read-only access).
+remove the widget from the panel. It only ever reads your Claude credentials —
+it never modifies anything under `~/.claude`.
