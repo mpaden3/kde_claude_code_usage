@@ -1,8 +1,9 @@
 [package]
 name = "claude-usage-collector"
 version = "0.1.0"
-edition = "2021"
-description = "Tiny CLI wrapper around the claude-usage crate: emits one JSON line of Claude Code usage for the Plasma widget."
+edition = "2024"
+description = "Tiny CLI that fetches Claude Code usage from Anthropic's OAuth endpoint and emits one JSON line for the Plasma widget."
+rust-version = "1.85"
 
 [[bin]]
 name = "claude-usage-collector"

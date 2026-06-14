@@ -64,10 +64,10 @@ fn cache_path(window: &str) -> Option<PathBuf> {
 }
 
 fn write_cache(window: &str, value: &serde_json::Value) {
-    if let Some(path) = cache_path(window) {
-        if let Ok(s) = serde_json::to_string(value) {
-            let _ = fs::write(path, s);
-        }
+    if let Some(path) = cache_path(window)
+        && let Ok(s) = serde_json::to_string(value)
+    {
+        let _ = fs::write(path, s);
     }
 }
 

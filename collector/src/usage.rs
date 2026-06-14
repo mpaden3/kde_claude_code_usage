@@ -60,10 +60,10 @@ impl UsagePeriod {
 
 /// Retrieve the OAuth access token: env var first, then the credentials file.
 fn read_token() -> Result<String, String> {
-    if let Ok(token) = std::env::var(ENV_VAR_TOKEN) {
-        if !token.is_empty() {
-            return Ok(token);
-        }
+    if let Ok(token) = std::env::var(ENV_VAR_TOKEN)
+        && !token.is_empty()
+    {
+        return Ok(token);
     }
 
     let home = std::env::var("HOME").map_err(|_| "HOME not set".to_string())?;
@@ -78,10 +78,10 @@ fn read_token() -> Result<String, String> {
         .ok_or("missing claudeAiOauth in credentials")?;
 
     // expiresAt is milliseconds since epoch; a past value means a stale token.
-    if let Some(expires_at_ms) = oauth.get("expiresAt").and_then(|v| v.as_i64()) {
-        if Utc::now().timestamp_millis() > expires_at_ms {
-            return Err("token expired (run `claude` to re-login)".into());
-        }
+    if let Some(expires_at_ms) = oauth.get("expiresAt").and_then(|v| v.as_i64())
+        && Utc::now().timestamp_millis() > expires_at_ms
+    {
+        return Err("token expired (run `claude` to re-login)".into());
     }
 
     oauth
