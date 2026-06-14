@@ -7,13 +7,17 @@ usage window** you've used, as a single configurable bar.
   or the rolling 7-day window — no guessing, no calibration.
 - Width and colour are adjustable.
 - Optional warning/critical recolouring as the bar fills.
-- Reads usage via a small bundled **Rust binary** that wraps the
-  [`claude-usage`](https://docs.rs/claude-usage) crate. It authenticates with
-  your existing Claude Code OAuth token and asks Anthropic for the same numbers
-  Claude Code's own `/usage` shows.
+- Reads usage via a small bundled **Rust binary** that talks directly to
+  Anthropic's OAuth usage endpoint — the same numbers Claude Code's own
+  `/usage` shows. It uses the login token Claude Code already created; there is
+  no third-party usage SDK and no Admin/API key involved.
 - Targets **Plasma 6 only** (versionless QML imports, `X-Plasma-API-Minimum-Version 6.0`).
 
-> Verified target here: Plasma **6.6.5**, Rust **1.96**.
+> Requires the Rust toolchain (edition 2024, so **Rust ≥ 1.85**). Tested on
+> Plasma **6.6.5** with Rust **1.96**.
+
+> **Unofficial.** This is a community-made widget and is not affiliated with,
+> sponsored by, or endorsed by Anthropic.
 
 ---
 
@@ -33,22 +37,62 @@ calibrate.
 
 The collector reads your Claude Code OAuth token from
 `~/.claude/.credentials.json` (or the `CLAUDE_CODE_OAUTH_TOKEN` environment
-variable) and makes one HTTPS request per refresh. It never writes to
-`~/.claude` and needs no Admin/API key — just the token Claude Code already
-created when you logged in.
+variable) and makes one HTTPS request per refresh to `api.anthropic.com`. The
+token is read, used for that single request, and never logged or written
+anywhere. The widget never modifies anything under `~/.claude` and needs no
+Admin/API key — just the token Claude Code already created when you logged in.
+
+---
+
+## Requirements
+
+- KDE **Plasma 6** (Plasma 5 is not supported).
+- The **Rust toolchain** (https://rustup.rs), **Rust ≥ 1.85** — `install.sh`
+  builds the collector with `cargo`.
+- `kpackagetool6` (ships with Plasma 6).
+- A working Claude Code login (so `~/.claude/.credentials.json` exists).
+
+---
+
+## Build / install
+
+```bash
+git clone https://github.com/mpaden3/kde_claude_code_usage.git
+cd kde_claude_code_usage
+./install.sh
+```
+
+`install.sh` runs `cargo build --release`, bundles the binary into the package,
+and installs the plasmoid into `~/.local/share/plasma/plasmoids/` (no root, no
+system files).
+
+Then right-click the panel → **Add Widgets** → search **"Claude Session Usage"**
+→ drag it onto a horizontal panel. Right-click the widget → **Configure** to set
+width, colour, and which window to show.
+
+> **After upgrading, restart the shell.** plasmashell caches plasmoid QML for the
+> whole session, so re-installing (or even removing and re-adding the widget) is
+> *not* enough to load new code — you must restart the shell once:
+>
+> ```bash
+> kquitapp6 plasmashell && (kstart plasmashell >/dev/null 2>&1 &)
+> ```
 
 ---
 
 ## Project layout
 
 ```
-plasma-claude-usage/
+kde_claude_code_usage/
 ├── install.sh                 # cargo build + kpackagetool6 install/upgrade
 ├── uninstall.sh               # kpackagetool6 remove (clean)
 ├── README.md
+├── LICENSE                    # MIT
 ├── collector/                 # Rust collector (built at install time)
 │   ├── Cargo.toml
-│   └── src/main.rs            # get_usage() → one JSON line on stdout
+│   └── src/
+│       ├── main.rs            # CLI + disk caching → one JSON line on stdout
+│       └── usage.rs           # token read + Anthropic usage request (ureq/rustls)
 └── package/
     ├── metadata.json          # plasmoid manifest (id: org.marko.claudeusage)
     └── contents/
@@ -69,7 +113,8 @@ Timer (every N s) ─▶ Plasma5Support "executable" engine
                      runs:  .../code/claude-usage-collector [session|weekly]
                             │
                             ▼
-                     claude-usage crate ─▶ Anthropic usage endpoint
+                     reads ~/.claude/.credentials.json (OAuth token)
+                     ─▶ HTTPS GET api.anthropic.com/api/oauth/usage
                             │
                             ▼
                      {"active":true,"utilization":42.0,"fraction":0.42,
@@ -78,49 +123,9 @@ Timer (every N s) ─▶ Plasma5Support "executable" engine
                      main.qml parses it ─▶ bar width = fraction ─▶ width/colour
 ```
 
----
-
-## Status
-
-**Complete and runnable:**
-- [x] Plasmoid package skeleton (metadata, config, ui).
-- [x] Bundled Rust collector using the `claude-usage` crate — real 5-hour and
-      7-day utilisation, with reset timing.
-- [x] Bar rendering pinned to a configurable width, fills the panel height.
-- [x] Configurable base colour + optional warn/critical thresholds.
-- [x] Configurable window (session/weekly), label, refresh interval.
-- [x] Tooltip with utilisation % and time until the window resets.
-- [x] Click the bar to force an immediate refresh.
-- [x] One-command build + install/uninstall.
-
-**Possible later (not built yet):**
-- [ ] Cost (€/$) readout — the usage endpoint reports utilisation, not spend.
-- [ ] Show both windows at once (two bars).
-- [ ] Vertical-panel layout (today it's tuned for horizontal panels).
-
----
-
-## Build / install
-
-Needs the **Rust toolchain** (https://rustup.rs); `install.sh` runs
-`cargo build --release` and bundles the binary into the package.
-
-```bash
-cd ~/Projects/plasma-claude-usage
-./install.sh
-```
-
-Then right-click the panel → **Add Widgets** → search **“Claude Session Usage”**
-→ drag it onto a horizontal panel. Right-click the widget → **Configure** to set
-width, colour, and which window to show.
-
-> **After upgrading, restart the shell.** plasmashell caches plasmoid QML for the
-> whole session, so re-installing (or even removing and re-adding the widget) is
-> *not* enough to load new code — you must restart the shell once:
->
-> ```bash
-> kquitapp6 plasmashell && (kstart plasmashell >/dev/null 2>&1 &)
-> ```
+The endpoint rate-limits, so each successful reading is cached to
+`~/.cache/claude-usage-collector/`. On a failed refresh the collector serves the
+last good reading (aged forward and flagged `stale`) instead of blanking the bar.
 
 ---
 
@@ -167,15 +172,47 @@ journalctl --user -f -t plasmashell
 
 ---
 
-## Cleanup (it's meant to be easy)
+## Status
+
+**Complete and runnable:**
+- [x] Plasmoid package skeleton (metadata, config, ui).
+- [x] Bundled Rust collector (in-house, `ureq` + rustls) — real 5-hour and 7-day
+      utilisation with reset timing, disk-cached against rate limits.
+- [x] Bar rendering pinned to a configurable width, fills the panel height.
+- [x] Configurable base colour + optional warn/critical thresholds.
+- [x] Configurable window (session/weekly), label, refresh interval.
+- [x] Tooltip with utilisation % and time until the window resets.
+- [x] Click the bar to force an immediate refresh.
+- [x] One-command build + install/uninstall.
+
+**Possible later (not built yet):**
+- [ ] Cost (€/$) readout — the usage endpoint reports utilisation, not spend.
+- [ ] Show both windows at once (two bars).
+- [ ] Vertical-panel layout (today it's tuned for horizontal panels).
+
+---
+
+## Uninstall
 
 ```bash
-cd ~/Projects/plasma-claude-usage
 ./uninstall.sh          # removes ~/.local/share/plasma/plasmoids/org.marko.claudeusage/
-cd .. && rm -rf plasma-claude-usage   # delete the source too
 ```
 
-That's everything. The widget writes no other files: its settings live in
-`~/.config/plasma-org.kde.plasma.desktop-appletsrc` and disappear when you
-remove the widget from the panel. It only ever reads your Claude credentials —
+The widget writes no other files of its own: its settings live in
+`~/.config/plasma-org.kde.plasma.desktop-appletsrc` and disappear when you remove
+the widget from the panel; cached readings live in
+`~/.cache/claude-usage-collector/`. It only ever reads your Claude credentials —
 it never modifies anything under `~/.claude`.
+
+---
+
+## Contributing
+
+Issues and pull requests are welcome. For UI changes, please test with
+`plasmoidviewer -a ./package` and confirm the collector still emits valid JSON
+(`cargo run --manifest-path collector/Cargo.toml -- session`). Please run
+`cargo clippy` before opening a PR.
+
+## License
+
+[MIT](LICENSE) © Marko Pađen
