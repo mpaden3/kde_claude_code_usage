@@ -96,18 +96,24 @@ fn read_token() -> Result<String, String> {
 pub fn get_usage() -> Result<UsageData, String> {
     let token = read_token()?;
 
-    let body = ureq::get(USAGE_API_URL)
-        .timeout(std::time::Duration::from_secs(REQUEST_TIMEOUT_SECS))
-        .set("Authorization", &format!("Bearer {token}"))
-        .set("anthropic-beta", BETA_HEADER)
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .timeout_global(Some(std::time::Duration::from_secs(REQUEST_TIMEOUT_SECS)))
+        .build()
+        .into();
+
+    let body = agent
+        .get(USAGE_API_URL)
+        .header("Authorization", &format!("Bearer {token}"))
+        .header("anthropic-beta", BETA_HEADER)
         .call()
         .map_err(|e| match e {
-            ureq::Error::Status(401, _) => "unauthorized (run `claude` to re-login)".to_string(),
-            ureq::Error::Status(429, _) => "rate limited".to_string(),
-            ureq::Error::Status(code, _) => format!("server returned HTTP {code}"),
-            ureq::Error::Transport(_) => "failed to connect to Anthropic API".to_string(),
+            ureq::Error::StatusCode(401) => "unauthorized (run `claude` to re-login)".to_string(),
+            ureq::Error::StatusCode(429) => "rate limited".to_string(),
+            ureq::Error::StatusCode(code) => format!("server returned HTTP {code}"),
+            _ => "failed to connect to Anthropic API".to_string(),
         })?
-        .into_string()
+        .body_mut()
+        .read_to_string()
         .map_err(|_| "failed to read response body".to_string())?;
 
     serde_json::from_str(&body).map_err(|e| format!("failed to parse API response: {e}"))
