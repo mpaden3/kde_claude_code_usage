@@ -1,10 +1,10 @@
 //! Report current Claude Code usage as a single JSON line.
 //!
-//! Thin wrapper around the `claude-usage` crate, which reads the Claude Code
-//! OAuth token (`~/.claude/.credentials.json`, or the `CLAUDE_CODE_OAUTH_TOKEN`
-//! env var) and asks Anthropic for the *real* 5-hour and 7-day usage windows.
-//! Unlike the previous local-log estimator, the percentages here are the actual
-//! per-plan utilisation, so the widget no longer needs a guessed token limit.
+//! Reads the Claude Code OAuth token (`~/.claude/.credentials.json`, or the
+//! `CLAUDE_CODE_OAUTH_TOKEN` env var) and asks Anthropic for the *real* 5-hour
+//! and 7-day usage windows (see the `usage` module). Unlike the previous
+//! local-log estimator, the percentages here are the actual per-plan
+//! utilisation, so the widget no longer needs a guessed token limit.
 //!
 //! Usage: claude-usage-collector [session|weekly]   (defaults to session)
 //!
@@ -14,8 +14,10 @@
 //! keeps showing a number. It never exits non-zero: failures are reported in the
 //! JSON `error` field.
 
-use claude_usage::{get_usage, types::UsagePeriod};
+mod usage;
+
 use serde_json::json;
+use usage::{get_usage, UsagePeriod};
 use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
